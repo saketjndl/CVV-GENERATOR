@@ -1,0 +1,135 @@
+import random
+import time
+import tkinter as tk
+from threading import Thread
+from tkinter import font as tkFont
+from PIL import Image, ImageDraw, ImageFont, ImageTk
+
+# Global variables
+cooldown_active = False
+captcha_solved = False
+current_captcha_text = ""
+
+# Function to generate a random CVV
+def generate_cvv():
+    return '{:03d}'.format(random.randint(0, 999))
+
+# Function to update the e-ink display (simulated here with a label update)
+def update_display(cvv):
+    cvv_label.config(text=cvv)
+
+# Function to handle the cooldown logic using Tkinter's after method
+def handle_cooldown(cooldown_label):
+    global cooldown_active
+    cooldown_active = True
+    for i in range(10, 0, -1):
+        cooldown_label.config(text=f"Cooldown: {i}s")
+        root.update_idletasks()
+        time.sleep(1)
+    cooldown_label.config(text="")
+    cooldown_active = False
+
+# Function to generate CAPTCHA using Pillow
+def generate_captcha_image():
+    global current_captcha_text
+    current_captcha_text = ''.join(random.choices("ABCDEFGHJKLMNPQRSTUVWXYZ23456789", k=6))
+    
+    # Create an image
+    img = Image.new('RGB', (200, 60), color=(255, 255, 255))
+    draw = ImageDraw.Draw(img)
+    font = ImageFont.truetype("arial.ttf", 36)
+    draw.text((10, 10), current_captcha_text, font=font, fill=(0, 0, 0))
+    
+    # Add some noise
+    for _ in range(50):
+        x1, y1 = random.randint(0, 200), random.randint(0, 60)
+        x2, y2 = x1 + 2, y1 + 2
+        draw.ellipse([x1, y1, x2, y2], fill=(random.randint(0, 255), random.randint(0, 255), random.randint(0, 255)))
+    
+    # Convert the image to a format Tkinter can use
+    return ImageTk.PhotoImage(img)
+
+# Function to check the CAPTCHA input
+def check_captcha(user_input):
+    global captcha_solved
+    if user_input.upper() == current_captcha_text:
+        captcha_solved = True
+        captcha_status_label.config(text="Captcha correct. You may generate a CVV.")
+    else:
+        captcha_solved = False
+        captcha_status_label.config(text="Captcha incorrect. Try again.")
+        update_captcha()
+
+# Function to manually generate a new CVV
+def manual_generate(captcha_entry):
+    global captcha_solved
+    if not cooldown_active:
+        if captcha_solved:
+            new_cvv = generate_cvv()
+            update_display(new_cvv)
+            Thread(target=handle_cooldown, args=(cooldown_label,)).start()
+            captcha_solved = False  # Reset the CAPTCHA solved status
+            update_captcha()  # Generate a new CAPTCHA
+        else:
+            check_captcha(captcha_entry.get())
+        captcha_entry.delete(0, 'end')
+    else:
+        cooldown_label.config(text="Please wait for the cooldown.")
+
+# Function to update the CAPTCHA
+def update_captcha():
+    captcha_image = generate_captcha_image()
+    captcha_label.config(image=captcha_image)
+    captcha_label.image = captcha_image
+
+# Function to automatically update CVV every hour
+def auto_update_cvv():
+    while True:
+        new_cvv = generate_cvv()
+        update_display(new_cvv)
+        time.sleep(3600)
+
+# Setting up the GUI
+root = tk.Tk()
+root.title("CVV Generator with CAPTCHA")
+root.geometry("400x400")
+root.resizable(False, False)
+
+# Custom fonts
+cvv_font = tkFont.Font(family="Helvetica", size=24, weight="bold")
+button_font = tkFont.Font(family="Helvetica", size=12)
+cooldown_font = tkFont.Font(family="Helvetica", size=10, slant="italic")
+
+# Styling
+root.configure(bg="#333333")
+cvv_label = tk.Label(root, text="---", font=cvv_font, bg="#333333", fg="#4CAF50")
+cvv_label.pack(pady=20)
+
+captcha_label = tk.Label(root, bg="#333333")
+captcha_label.pack(pady=10)
+
+captcha_status_label = tk.Label(root, text="", font=cooldown_font, bg="#333333", fg="#FFFFFF")
+captcha_status_label.pack()
+
+captcha_entry = tk.Entry(root, font=button_font)
+captcha_entry.pack(pady=5)
+
+check_captcha_button = tk.Button(root, text="Check Captcha", command=lambda: check_captcha(captcha_entry.get()), font=button_font, bg="#555555", fg="#FFFFFF")
+check_captcha_button.pack(pady=5)
+
+cooldown_label = tk.Label(root, text="", font=cooldown_font, bg="#333333", fg="#FF0000")
+cooldown_label.pack()
+
+generate_button = tk.Button(root, text="Generate New CVV", command=lambda: manual_generate(captcha_entry), font=button_font, bg="#555555", fg="#FFFFFF")
+generate_button.pack(pady=10)
+
+# Generate the initial CAPTCHA
+update_captcha()
+
+# Start the automatic CVV update in a separate thread
+auto_update_thread = Thread(target=auto_update_cvv)
+auto_update_thread.daemon = True
+auto_update_thread.start()
+
+# Run the GUI
+root.mainloop()
